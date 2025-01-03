@@ -2,6 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load current configuration
     loadCurrentConfig();
 
+    // Load saved GitHub token if exists
+    const savedToken = sessionStorage.getItem('github_token');
+    if (savedToken) {
+        document.getElementById('githubToken').value = savedToken;
+    }
+
     // Handle form submission
     document.getElementById('configForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -10,6 +16,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const alertDiv = resultDiv.querySelector('.alert');
         
         try {
+            // Save GitHub token to sessionStorage
+            const githubToken = document.getElementById('githubToken').value.trim();
+            if (githubToken) {
+                sessionStorage.setItem('github_token', githubToken);
+            }
+
             const response = await fetch('/config/models', {
                 method: 'POST',
                 headers: {

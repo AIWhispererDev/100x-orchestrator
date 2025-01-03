@@ -32,6 +32,15 @@
             <div class="card-body">
                 <form id="configForm">
                     <div class="mb-3">
+                        <label for="githubToken" class="form-label">GitHub Token</label>
+                        <input type="password" class="form-control" id="githubToken" required>
+                        <div class="form-text">
+                            Your GitHub personal access token. Required for repository access and creating pull requests.
+                            <a href="https://github.com/settings/tokens" target="_blank">Create one here</a>.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="orchestratorModel" class="form-label">Orchestrator Model</label>
                         <input type="text" class="form-control" id="orchestratorModel" required>
                         <div class="form-text">

@@ -9,6 +9,9 @@ from pathlib import Path
 import time
 import re
 
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+
 def normalize_path(path_str):
     if not path_str:
         return None
@@ -21,6 +24,7 @@ def normalize_path(path_str):
 
 class AgentSession:
     def __init__(self, workspace_path, task, config=None, aider_commands=None):
+        logger.info(f"Initializing AgentSession for workspace {workspace_path}")
         self.workspace_path = normalize_path(workspace_path)
         self.task = task
         self.aider_commands = aider_commands
@@ -35,8 +39,10 @@ class AgentSession:
             'output_buffer_max_length': 10000
         }
         self.config = {**default_config, **(config or {})}
+        logger.debug(f"AgentSession initialized with task: {task}")
 
     def start(self) -> bool:
+        logger.info(f"Starting AgentSession for workspace {self.workspace_path}")
         try:
             env = os.environ.copy()
             env['PYTHONUNBUFFERED'] = '1'
@@ -93,8 +99,10 @@ class AgentSession:
             stdout_thread.start()
             stderr_thread.start()
             time.sleep(2)
+            logger.debug(f"AgentSession started for workspace {self.workspace_path}")
             return True
         except Exception as e:
+            logger.error(f"Failed to start AgentSession for workspace {self.workspace_path}: {str(e)}")
             return False
 
     def _read_output(self, pipe, pipe_name):
@@ -130,8 +138,9 @@ class AgentSession:
                     pipe.flush()
                 except ValueError:
                     break
+            logger.debug(f"Finished reading output for pipe {pipe_name}")
         except Exception as e:
-            pass
+            logger.error(f"Error reading output for pipe {pipe_name}: {str(e)}")
 
     def get_output(self):
         try:
@@ -139,9 +148,10 @@ class AgentSession:
             self.output_buffer.seek(0)
             output = self.output_buffer.read()
             self.output_buffer.seek(pos)
+            logger.debug(f"Retrieved output for AgentSession")
             return output
         except Exception as e:
-            pass
+            logger.error(f"Failed to retrieve output for AgentSession: {str(e)}")
 
     def _echo_message(self, message: str) -> None:
         try:
@@ -150,8 +160,9 @@ class AgentSession:
             with threading.Lock():
                 self.output_buffer.seek(0, 2)
                 self.output_buffer.write(echo_line)
+            logger.debug(f"Echoed message for AgentSession: {message}")
         except Exception as e:
-            pass
+            logger.error(f"Failed to echo message for AgentSession: {str(e)}")
 
     def is_ready(self) -> bool:
         try:
@@ -165,8 +176,10 @@ class AgentSession:
                 current_output = self.get_output()
                 if current_output != initial_output:
                     return False
+            logger.debug(f"AgentSession is ready")
             return True
         except Exception as e:
+            logger.error(f"Failed to check if AgentSession is ready: {str(e)}")
             return False
 
     def send_message(self, message: str, timeout: int = 10) -> bool:
@@ -179,10 +192,13 @@ class AgentSession:
             sanitized_message = message.replace('"', '\\"')
             self.process.stdin.write(sanitized_message + "\n")
             self.process.stdin.flush()
+            logger.debug(f"Sent message to AgentSession: {message}")
             return True
         except (BrokenPipeError, IOError) as pipe_error:
+            logger.error(f"Failed to send message to AgentSession: {str(pipe_error)}")
             return False
         except Exception as e:
+            logger.error(f"Failed to send message to AgentSession: {str(e)}")
             return False
 
     def _format_output_line(self, line: str) -> str:
@@ -225,5 +241,6 @@ class AgentSession:
                         self.process.stderr.close()
                 except Exception as pipe_close_error:
                     pass
+            logger.debug(f"Cleaned up AgentSession")
         except Exception as e:
-            pass
+            logger.error(f"Failed to clean up AgentSession: {str(e)}")

@@ -30,16 +30,25 @@ CHECK_INTERVAL = 5  # Reduced to 30 seconds for more frequent updates
 aider_sessions = {}
 prompt_processors = {}
 
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+
 def load_tasks():
     """Load tasks and agents from database."""
-    return {
-        'tasks': get_all_tasks(),
-        'agents': get_all_agents(),
-        'repository_url': get_config('repository_url') or ''
-    }
+    logger.info("Loading tasks and agents from database")
+    try:
+        return {
+            'tasks': get_all_tasks(),
+            'agents': get_all_agents(),
+            'repository_url': get_config('repository_url') or ''
+        }
+    except Exception as e:
+        logger.error(f"Error loading tasks: {e}", exc_info=True)
+        return None
 
 def save_tasks(tasks_data):
     """Save tasks and agents to database."""
+    logger.info("Saving tasks and agents to database")
     try:
         # Save repository URL
         if 'repository_url' in tasks_data:
@@ -49,26 +58,25 @@ def save_tasks(tasks_data):
         for agent_id, agent_data in tasks_data.get('agents', {}).items():
             save_agent(agent_id, agent_data)
     except Exception as e:
-        logging.error(f"Error saving tasks: {e}", exc_info=True)
+        logger.error(f"Error saving tasks: {e}", exc_info=True)
 
 def delete_agent(agent_id):
     """Delete a specific agent and clean up its workspace."""
+    logger.info(f"Deleting agent {agent_id}")
     try:
-        logging.info(f"Deleting agent {agent_id}")
-        
         # Clean up session if it exists
         if agent_id in aider_sessions:
             try:
                 aider_sessions[agent_id].cleanup()
                 del aider_sessions[agent_id]
-                logging.info(f"Cleaned up session for agent {agent_id}")
+                logger.info(f"Cleaned up session for agent {agent_id}")
             except Exception as e:
-                logging.error(f"Error cleaning up session: {e}", exc_info=True)
+                logger.error(f"Error cleaning up session: {e}", exc_info=True)
         
         # Remove from database
         success = db_delete_agent(agent_id)
         if not success:
-            logging.error(f"Failed to delete agent {agent_id} from database")
+            logger.error(f"Failed to delete agent {agent_id} from database")
             return False
             
         # Clean up workspace
@@ -79,27 +87,27 @@ def delete_agent(agent_id):
             if workspace and os.path.exists(workspace):
                 try:
                     shutil.rmtree(workspace)
-                    logging.info(f"Removed workspace for agent {agent_id}")
+                    logger.info(f"Removed workspace for agent {agent_id}")
                 except Exception as e:
-                    logging.error(f"Could not remove workspace: {e}", exc_info=True)
+                    logger.error(f"Could not remove workspace: {e}", exc_info=True)
             
             # Remove from in-memory tasks data
             del tasks_data['agents'][agent_id]
             save_tasks(tasks_data)
         
-        logging.info(f"Agent {agent_id} deleted successfully")
+        logger.info(f"Agent {agent_id} deleted successfully")
         return True
         
     except Exception as e:
-        logging.error(f"Error deleting agent: {e}", exc_info=True)
+        logger.error(f"Error deleting agent: {e}", exc_info=True)
         return False
 
 def initialiseCodingAgent(repository_url: str = None, task_description: str = None, num_agents: int = None, aider_commands: str = None):
     """Initialise coding agents with configurable agent count."""
-    logging.info("Starting agent initialization")
+    logger.info("Starting agent initialization")
     num_agents = num_agents or DEFAULT_AGENTS_PER_TASK
     if not task_description:
-        logging.error("No task description provided")
+        logger.error("No task description provided")
         return None
     created_agent_ids = []
     try:
@@ -125,18 +133,18 @@ def initialiseCodingAgent(repository_url: str = None, task_description: str = No
             try:
                 os.chdir(workspace_dirs["repo"])
                 if not repository_url:
-                    logging.error("No repository URL provided")
+                    logger.error("No repository URL provided")
                     shutil.rmtree(agent_workspace)
                     continue
                 repo_name = repository_url.rstrip('/').split('/')[-1]
                 if repo_name.endswith('.git'):
                     repo_name = repo_name[:-4]
                 if not cloneRepository(repository_url):
-                    logging.error("Failed to clone repository")
+                    logger.error("Failed to clone repository")
                     shutil.rmtree(agent_workspace)
                     continue
                 if not os.path.exists(repo_name) or not os.path.isdir(os.path.join(repo_name, '.git')):
-                    logging.error(f"Repo dir {repo_name} not found or not a git repository")
+                    logger.error(f"Repo dir {repo_name} not found or not a git repository")
                     shutil.rmtree(agent_workspace)
                     continue
                 repo_dir = repo_name
@@ -147,13 +155,13 @@ def initialiseCodingAgent(repository_url: str = None, task_description: str = No
                 try:
                     subprocess.check_call(f"git checkout -b {branch_name}", shell=True)
                 except subprocess.CalledProcessError:
-                    logging.error("Failed to create new branch", exc_info=True)
+                    logger.error("Failed to create new branch", exc_info=True)
                     shutil.rmtree(agent_workspace)
                     continue
                 aider_session = AgentSession(str(full_repo_path), task_description, agent_config, aider_commands=aider_commands)
                 prompt_processor = PromptProcessor()
                 if not aider_session.start():
-                    logging.error("Failed to start aider session")
+                    logger.error("Failed to start aider session")
                     shutil.rmtree(agent_workspace)
                     continue
                 aider_sessions[agent_id] = aider_session
@@ -180,31 +188,32 @@ def initialiseCodingAgent(repository_url: str = None, task_description: str = No
             created_agent_ids.append(agent_id)
         return created_agent_ids
     except Exception as e:
-        logging.error(f"Error initializing coding agents: {e}", exc_info=True)
+        logger.error(f"Error initializing coding agents: {e}", exc_info=True)
         return None
 
 def get_github_token():
     """Retrieve GitHub token from environment variables."""
+    logger.info("Retrieving GitHub token from environment variables")
     load_dotenv()
     token = os.getenv('GITHUB_TOKEN')
     if not token:
-        logging.error("No GitHub token found in environment")
+        logger.error("No GitHub token found in environment")
         return None
     try:
         g = Github(token)
         g.get_user().login
         return token
     except Exception as e:
-        logging.error(f"Invalid GitHub token: {e}")
+        logger.error(f"Invalid GitHub token: {e}")
         return None
 
 def cloneRepository(repository_url: str) -> bool:
     """Clone git repository using subprocess."""
+    logger.info(f"Cloning repository {repository_url}")
     try:
         if not repository_url:
-            logging.error("No repository URL provided")
+            logger.error("No repository URL provided")
             return False
-        logging.info(f"Cloning {repository_url}")
         result = subprocess.run(
             f"git clone --quiet {repository_url}",
             shell=True,
@@ -212,23 +221,24 @@ def cloneRepository(repository_url: str) -> bool:
             text=True
         )
         if result.returncode != 0:
-            logging.error(f"Git clone failed: {result.stderr}")
+            logger.error(f"Git clone failed: {result.stderr}")
             return False
         return True
     except subprocess.SubprocessError as e:
-        logging.error(f"Git clone failed: {str(e)}", exc_info=True)
+        logger.error(f"Git clone failed: {str(e)}", exc_info=True)
         return False
     except Exception as e:
-        logging.error(f"Unexpected error during clone: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error during clone: {str(e)}", exc_info=True)
         return False
 
 def update_agent_output(agent_id):
     """Update the output for a specific agent."""
+    logger.info(f"Updating output for agent {agent_id}")
     try:
         tasks_data = load_tasks()
         agent_data = tasks_data['agents'].get(agent_id)
         if not agent_data:
-            logging.error(f"No agent found with ID {agent_id}")
+            logger.error(f"No agent found with ID {agent_id}")
             return False
         if agent_id in aider_sessions:
             output = aider_sessions[agent_id].get_output()
@@ -238,13 +248,12 @@ def update_agent_output(agent_id):
             return True
         return False
     except Exception as e:
-        logging.error(f"Error updating agent output: {e}", exc_info=True)
+        logger.error(f"Error updating agent output: {e}", exc_info=True)
         return False
 
 def main_loop():
+    logger.info("Starting main loop")
     pr_manager = PullRequestManager()
-    """Main orchestration loop to manage agents."""
-    logging.info("Starting main loop")
     litellm_client = LiteLLMClient()  # Create LiteLLM client instance
     while True:
         try:
@@ -268,7 +277,7 @@ def main_loop():
                                 session_logs,
                                 model_type="agent"  # Use agent model for agent responses
                             )
-                            logging.info(f"Agent {agent_id} response: {follow_up_message}")
+                            logger.info(f"Agent {agent_id} response: {follow_up_message}")
                             if agent_id in tasks_data['agents']:
                                 try:
                                     follow_up_data = json.loads(follow_up_message)
@@ -296,7 +305,7 @@ def main_loop():
                                     })
                                     save_tasks(tasks_data)
                                 except json.JSONDecodeError:
-                                    logging.error(f"Invalid JSON in follow_up_message: {follow_up_message}")
+                                    logger.error(f"Invalid JSON in follow_up_message: {follow_up_message}")
                             if agent_id in prompt_processors:
                                 processor = prompt_processors[agent_id]
                                 action = processor.process_response(agent_id, follow_up_message)
@@ -314,7 +323,7 @@ def main_loop():
                                                     pr_info
                                                 )
                                             if pr:
-                                                logging.info(f"Created PR: {pr.html_url}")
+                                                logger.info(f"Created PR: {pr.html_url}")
                                                 tasks_data['agents'][agent_id]['pr_url'] = pr.html_url
                                                 tasks_data['agents'][agent_id]['status'] = 'completed'
                                                 tasks_data['agents'][agent_id]['completed_at'] = datetime.datetime.now().isoformat()
@@ -324,29 +333,29 @@ def main_loop():
                                                     del aider_sessions[agent_id]
                                                 save_tasks(tasks_data)
                                             else:
-                                                logging.error("Failed to create PR")
+                                                logger.error("Failed to create PR")
                                         except Exception as e:
-                                            logging.error(f"Error creating PR: {e}")
+                                            logger.error(f"Error creating PR: {e}")
                                     else:
-                                        logging.error("No PR info found in agent state")
+                                        logger.error("No PR info found in agent state")
                                 elif action:
                                     if agent_session.send_message(action):
-                                        logging.info(f"Sending action: {action} to {agent_id}")
+                                        logger.info(f"Sending action: {action} to {agent_id}")
                                     else:
-                                        logging.error(f"Failed to send action to agent {agent_id}")
+                                        logger.error(f"Failed to send action to agent {agent_id}")
                                 else:
-                                    logging.error(f"Failed to process response from OpenRouter")
+                                    logger.error(f"Failed to process response from OpenRouter")
                             else:
-                                logging.error(f"No prompt processor found for agent {agent_id}")
+                                logger.error(f"No prompt processor found for agent {agent_id}")
                         except Exception as e:
-                            logging.error(f"Error processing session summary for agent {agent_id}:", exc_info=True)
-                            logging.error(f"Session logs length: {len(session_logs) if session_logs else 0}")
-                            logging.error(f"Task description: {agent_session.task[:200]}...")
+                            logger.error(f"Error processing session summary for agent {agent_id}:", exc_info=True)
+                            logger.error(f"Session logs length: {len(session_logs) if session_logs else 0}")
+                            logger.error(f"Task description: {agent_session.task[:200]}...")
             sleep(CHECK_INTERVAL)
         except Exception as e:
-            logging.error(f"Error in main loop: {e}", exc_info=True)
+            logger.error(f"Error in main loop: {e}", exc_info=True)
             sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    logging.info("Starting orchestrator")
+    logger.info("Starting orchestrator")
     main_loop()

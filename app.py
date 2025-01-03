@@ -1,8 +1,54 @@
 import logging
 import sqlite3
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, redirect, url_for
 from werkzeug.serving import WSGIRequestHandler
+import os
+import threading
+import json
+from datetime import datetime, timedelta
+import re
+from urllib.parse import urlparse
+from github_token import GitHubTokenManager
+import logging.handlers
+
+# Configure logging
+def setup_logging():
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+        
+    log_file = os.path.join(log_dir, f"app_{datetime.now().strftime('%Y%m%d')}.log")
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.handlers.RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Create logger for this module
+    logger = logging.getLogger(__name__)
+    return logger
+
+logger = setup_logging()
+
+# Initialize database first
+from database import init_db
+init_db()
+
+# Then import modules that use the database
+from orchestrator import (
+    initialiseCodingAgent, 
+    main_loop, 
+    load_tasks, 
+    save_tasks, 
+    delete_agent,
+    aider_sessions
+)
 
 # Database configuration
 DATABASE_PATH = Path("tasks.db")
@@ -12,19 +58,6 @@ class TasksJsonLogFilter(logging.Filter):
     def filter(self, record):
         # Suppress log messages for tasks.json requests
         return not ('/tasks/tasks.json' in record.getMessage())
-from orchestrator import (
-    initialiseCodingAgent, 
-    main_loop, 
-    load_tasks, 
-    save_tasks, 
-    delete_agent,
-    aider_sessions  # Add this import
-)
-import os
-import threading
-import json
-from pathlib import Path
-import datetime
 
 app = Flask(__name__)
 
@@ -58,8 +91,8 @@ def agent_view():
     agents = tasks_data.get('agents', {})
     
     # Calculate time until next check (reduced to 30 seconds for more frequent updates)
-    now = datetime.datetime.now()
-    next_check = now + datetime.timedelta(seconds=30)
+    now = datetime.now()
+    next_check = now + timedelta(seconds=30)
     
     # Ensure basic agent data exists and add new fields if missing
     for agent_id, agent in list(agents.items()):
@@ -92,7 +125,6 @@ def create_agent():
             return jsonify({'error': 'GitHub token is required'}), 400
 
         # Save token using manager
-        from github_token import GitHubTokenManager
         token_manager = GitHubTokenManager()
         if not token_manager.set_token(github_token):
             return jsonify({'error': 'Failed to save GitHub token'}), 500
@@ -185,6 +217,47 @@ def create_agent():
             'error': str(e)
         }), 500
 
+@app.route('/api/create_pr', methods=['POST'])
+def create_pull_request():
+    try:
+        data = request.json
+        token_manager = GitHubTokenManager()
+        github_token = token_manager.get_token()
+        
+        if not github_token:
+            return jsonify({'error': 'GitHub token not found'}), 401
+        
+        # GitHub API endpoint for creating a PR
+        url = f'https://api.github.com/repos/{data["owner"]}/{data["repo"]}/pulls'
+        
+        headers = {
+            'Authorization': f'token {github_token}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        
+        pr_data = {
+            'title': data['title'],
+            'body': data['description'],
+            'head': data['branch'],
+            'base': 'main'  # You might want to make this configurable
+        }
+        
+        response = requests.post(url, headers=headers, json=pr_data)
+        response_data = response.json()
+        
+        if response.status_code == 201:
+            return jsonify({
+                'message': 'Pull request created successfully',
+                'html_url': response_data['html_url']
+            })
+        else:
+            return jsonify({
+                'error': response_data.get('message', 'Failed to create pull request')
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/config/models', methods=['POST'])
 def update_model_config():
     """Update the model configuration for orchestrator, aider and agent."""
@@ -213,8 +286,8 @@ def update_model_config():
                 data['orchestrator_model'],
                 data['aider_model'],
                 data['agent_model'],
-                datetime.datetime.now().isoformat(),
-                datetime.datetime.now().isoformat()
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
             ))
             conn.commit()
             
@@ -310,6 +383,33 @@ def remove_agent(agent_id):
             'success': False,
             'error': str(e)
         }), 500
+
+@app.route('/<path:github_path>')
+def handle_github_redirect(github_path):
+    """Handle GitHub repository URL redirects."""
+    logger.info(f"Received GitHub redirect for path: {github_path}")
+    
+    # Check if this is a GitHub-style path (username/repo/...)
+    path_parts = github_path.split('/')
+    if len(path_parts) >= 2:
+        # Basic validation of username/repo format
+        username, repo = path_parts[0], path_parts[1]
+        
+        # Construct the full GitHub URL
+        github_url = f'https://github.com/{username}/{repo}'
+        logger.info(f"Constructed GitHub URL: {github_url}")
+        
+        # Store the repository URL in the database
+        from database import save_config
+        save_config('repository_url', github_url)
+        logger.info("Saved repository URL to database")
+        
+        # Redirect to the main page
+        return redirect(url_for('index'))
+    
+    logger.warning(f"Invalid GitHub path: {github_path}")
+    return render_template('error.html', 
+                         message="Invalid GitHub repository path"), 400
 
 if __name__ == '__main__':
     app.run(debug=True)

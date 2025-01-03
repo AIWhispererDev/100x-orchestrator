@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h2>Repository: {{ username }}/{{ repo }}</h2>
+        </div>
+        <div class="card-body">
+            <div class="mb-4">
+                <h4>Repository Details</h4>
+                <p>Path: {{ path if path else 'Root' }}</p>
+            </div>
+
+            <div class="mb-4">
+                <h4>Actions</h4>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-primary" id="createPR">Create Pull Request</button>
+                    <a href="https://github.com/{{ username }}/{{ repo }}" target="_blank" class="btn btn-secondary">View on GitHub</a>
+                </div>
+            </div>
+
+            <div id="prForm" style="display: none;" class="mt-4">
+                <h4>Create Pull Request</h4>
+                <form id="pullRequestForm">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="branch" class="form-label">Branch Name</label>
+                        <input type="text" class="form-control" id="branch" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Submit PR</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('createPR').addEventListener('click', function() {
+    const prForm = document.getElementById('prForm');
+    prForm.style.display = prForm.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('pullRequestForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        title: document.getElementById('title').value,
+        description: document.getElementById('description').value,
+        branch: document.getElementById('branch').value,
+        repo: '{{ repo }}',
+        owner: '{{ username }}'
+    };
+
+    try {
+        const response = await fetch('/api/create_pr', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        if (response.ok) {
+            alert('Pull request created successfully!');
+            window.location.href = result.html_url;
+        } else {
+            alert('Error creating pull request: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error creating pull request: ' + error.message);
+    }
+});
+</script>
+{% endblock %}

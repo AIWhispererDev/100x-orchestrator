@@ -13,7 +13,7 @@ class GitHubTokenManager:
         """Load token from environment or .env file"""
         self.token = os.getenv('GITHUB_TOKEN')
         if not self.token:
-            env_path = Path.home() / '.env'
+            env_path = Path(__file__).parent / '.env'
             if env_path.exists():
                 with open(env_path) as f:
                     for line in f:
@@ -28,7 +28,7 @@ class GitHubTokenManager:
     def set_token(self, token: str) -> bool:
         """Set a new GitHub token"""
         try:
-            env_path = Path.home() / '.env'
+            env_path = Path(__file__).parent / '.env'
             with open(env_path, 'a') as f:
                 f.write(f"\nGITHUB_TOKEN={token}\n")
             self.token = token

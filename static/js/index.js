@@ -3,6 +3,7 @@ async function updateOverview() {
     try {
         const response = await fetch('/tasks/tasks.json');
         const data = await response.json();
+        console.log('Tasks data:', data);  // Debug log
         const agents = data.agents || {};
         const agentCount = Object.keys(agents).length;
 
@@ -14,7 +15,10 @@ async function updateOverview() {
         document.getElementById('activeTasks').textContent = uniqueTasks;
 
         // Update repository display
-        document.getElementById('repoDisplay').textContent = data.repository_url || 'Not set';
+        const repoDisplay = document.getElementById('repoDisplay');
+        console.log('Repository URL:', data.repository_url);  // Debug log
+        repoDisplay.textContent = data.repository_url || 'Not set';
+        console.log('Updated repoDisplay:', repoDisplay.textContent);  // Debug log
 
         // Show/hide delete button based on agent count
         document.getElementById('deleteAllAgents').style.display = agentCount > 0 ? 'inline-block' : 'none';
@@ -93,35 +97,37 @@ function loadFromStorage(key, useSession = false) {
 
 function loadStoredValues() {
     // Load GitHub token from sessionStorage
+    const githubTokenInput = document.getElementById('githubToken');
     const savedToken = loadFromStorage('github_token', true);
-    if (savedToken) {
-        document.getElementById('githubToken').value = savedToken;
+    if (savedToken && githubTokenInput) {
+        githubTokenInput.value = savedToken;
     }
 
     // Load aider commands from localStorage
+    const aiderCommandsInput = document.getElementById('aiderCommands');
     const savedCommands = loadFromStorage('aider_commands');
-    if (savedCommands) {
-        document.getElementById('aiderCommands').value = savedCommands;
+    if (savedCommands && aiderCommandsInput) {
+        aiderCommandsInput.value = savedCommands;
     }
 
     // Load repo URL from localStorage
+    const repoUrlInput = document.getElementById('repoUrl');
     const savedRepo = loadFromStorage('repo_url');
-    if (savedRepo) {
-        document.getElementById('repoUrl').value = savedRepo;
+    if (savedRepo && repoUrlInput) {
+        repoUrlInput.value = savedRepo;
     }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Load all stored values
     loadStoredValues();
-
-    // Initial overview update
+    
+    // Update overview immediately and every 5 seconds
     await updateOverview();
-
-    // Update overview every 5 seconds
     setInterval(updateOverview, 5000);
+    
+    // Get task list and add task button
     const taskList = document.getElementById('taskList');
-    const repoUrl = document.getElementById('repoUrl');
     const addTaskButton = document.getElementById('addTask');
 
     // Function to create a task item
@@ -175,19 +181,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Fetch GitHub issues
     document.getElementById('fetchIssues').addEventListener('click', async () => {
-        const repoUrl = document.getElementById('repoUrl').value;
-        const githubToken = document.getElementById('githubToken').value;
-
-        if (!repoUrl || !githubToken) {
-            const resultDiv = document.getElementById('result');
-            const alertDiv = resultDiv.querySelector('.alert');
-            resultDiv.style.display = 'block';
-            alertDiv.className = 'alert alert-danger';
-            alertDiv.textContent = 'Please enter both repository URL and GitHub token';
-            return;
-        }
-
         try {
+            // Get repository URL from the overview display
+            const repoUrl = document.getElementById('repoDisplay').textContent;
+            if (repoUrl === 'Not set') {
+                throw new Error('Please set a repository URL by using the URL replacement feature');
+            }
+
+            // Get GitHub token from sessionStorage
+            const githubToken = sessionStorage.getItem('github_token');
+            if (!githubToken) {
+                throw new Error('GitHub token not found. Please configure your GitHub token in the Configuration page');
+            }
+
             // Extract owner and repo from URL
             const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
             if (!match) {
@@ -288,37 +294,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const resultDiv = document.getElementById('result');
         const alertDiv = resultDiv.querySelector('.alert');
+        resultDiv.style.display = 'block';
 
         try {
-            // Collect tasks
-            const tasks = Array.from(document.querySelectorAll('.task-item')).map(item => {
-                const title = item.querySelector('.task-title').value.trim();
-                const description = item.querySelector('.task-description').value.trim();
-                return {
-                    title: title,
-                    description: description
-                };
-            }).filter(task => task.title !== '');
+            // Get GitHub token from sessionStorage
+            const githubToken = sessionStorage.getItem('github_token');
+            if (!githubToken) {
+                throw new Error('GitHub token not found. Please configure your GitHub token in the Configuration page');
+            }
 
-            const agentCount = parseInt(document.getElementById('agentCount').value, 10);
+            // Get repository URL from overview
+            const repoUrl = document.getElementById('repoDisplay').textContent;
+            if (repoUrl === 'Not set') {
+                throw new Error('Please set a repository URL by using the URL replacement feature');
+            }
 
-            // Store form values
-            const githubToken = document.getElementById('githubToken').value.trim();
-            const aiderCommands = document.getElementById('aiderCommands').value.trim();
-            const repoUrl = document.getElementById('repoUrl').value.trim();
+            // Get tasks from form
+            const tasks = Array.from(taskList.querySelectorAll('.task-item')).map(item => ({
+                title: item.querySelector('.task-title').value,
+                description: item.querySelector('.task-description').value
+            }));
 
-            saveToStorage('github_token', githubToken, true);
-            saveToStorage('aider_commands', aiderCommands);
-            saveToStorage('repo_url', repoUrl);
+            if (tasks.length === 0) {
+                throw new Error('Please add at least one task');
+            }
+
+            // Get number of agents
+            const agentCount = parseInt(document.getElementById('numAgents').value) || 2;
 
             const response = await fetch('/create_agent', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-GitHub-Token': sessionStorage.getItem('github_token') || ''
+                    'X-GitHub-Token': githubToken
                 },
                 body: JSON.stringify({
-                    repo_url: document.getElementById('repoUrl').value,
+                    repo_url: repoUrl,
                     tasks: tasks,
                     num_agents: agentCount,
                     aider_commands: document.getElementById('aiderCommands').value.trim()
@@ -327,7 +338,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const data = await response.json();
 
-            resultDiv.style.display = 'block';
             if (data.success) {
                 alertDiv.className = 'alert alert-success';
                 alertDiv.textContent = `Success! Agents ${data.agent_ids.join(', ')} created. Redirecting to Agent View...`;
@@ -341,7 +351,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alertDiv.textContent = `Error: ${data.error}`;
             }
         } catch (error) {
-            resultDiv.style.display = 'block';
             alertDiv.className = 'alert alert-danger';
             alertDiv.textContent = `Error: ${error.message}`;
         }

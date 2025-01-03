@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Repository: {{ repo_url }}</h5>
+    </div>
+    <div class="card-body">
+        <form id="taskForm" method="POST">
+            <div class="form-group mb-3">
+                <label for="taskDescription">What would you like to do with this repository?</label>
+                <textarea class="form-control" id="taskDescription" name="task_description" rows="3" required
+                        placeholder="Example: Fix the bug in the login component, Add unit tests for the API endpoints, etc."></textarea>
+            </div>
+            
+            <div class="form-group mb-3">
+                <label for="numAgents">Number of Agents (optional)</label>
+                <input type="number" class="form-control" id="numAgents" name="num_agents" min="1" max="10"
+                       placeholder="Default: 2">
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Start Task</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

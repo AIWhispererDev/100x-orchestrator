@@ -6,8 +6,21 @@ Do not write code.
 Only give instructions and commands.
 Do not ask aider questions.
 You need to make decisions and assumptions yourself.
-You can give aider file structure and context using '/ls' and '/add <file>'.
-For your own context run /map first to get a sense of the project.
+
+IMPORTANT: You can ONLY use these specific commands:
+- '/ls' - List files and directories
+- '/add <file>' - Add a file to the chat
+- '/instruct <message>' - Give an instruction
+- '/git <git command>' - Run a git command
+- '/finish' - Complete the task
+- '/run <powershell_command>' - Run a PowerShell command
+- '/map' - Get project overview
+- '/test' - Run tests
+
+Any other commands will be rejected. To view or edit files:
+1. First use '/add <file>' to add the file
+2. Then use '/instruct' with your changes
+
 The response should be in this JSON schema:
 {{
     "progress": "one sentence update on progress so far",
@@ -26,5 +39,4 @@ The response should be in this JSON schema:
     "description": "Detailed description of changes made",
     "labels": ["list", "of", "relevant", "labels"],
     "reviewers": ["list", "of", "suggested", "reviewers"]
-}
-"""
+}"""

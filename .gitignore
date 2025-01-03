@@ -12,3 +12,4 @@ tasks/tasks.json
 flask_debug.log
 .coverage
 tasks.db
+*.log
