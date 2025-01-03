@@ -4,9 +4,6 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-# Configure logger for this module
-logger = logging.getLogger(__name__)
-
 @dataclass
 class AgentResponse:
     """Store individual agent responses"""
@@ -20,14 +17,11 @@ class PromptProcessor:
     """Process JSON responses from the prompt and manage agent state"""
     
     def __init__(self):
-        logger.info("Initializing PromptProcessor")
         self.agent_states: Dict[str, Dict] = {}
         self.response_history: Dict[str, List[AgentResponse]] = {}
-        logger.debug("PromptProcessor initialized successfully")
         
     def process_response(self, agent_id: str, response: str) -> Optional[str]:
         """Process a JSON response and return the action to execute"""
-        logger.info(f"Processing response from agent: {agent_id}")
         try:
             # Parse JSON response
             data = json.loads(response)
@@ -35,14 +29,7 @@ class PromptProcessor:
             # Validate required fields
             required_fields = ['progress', 'thought', 'action', 'future']
             if not all(field in data for field in required_fields):
-                logger.error(f"Missing required fields in response: {response}")
-                return None
-            
-            # Validate action is an allowed command
-            action = data['action'].strip()
-            allowed_commands = ['/instruct', '/ls', '/git', '/add', '/finish', '/run', '/map', '/test']
-            if not any(action.startswith(cmd) for cmd in allowed_commands):
-                logger.error(f"Invalid command in action: {action}")
+                logging.error(f"Missing required fields in response: {response}")
                 return None
             
             # Create and store response object
@@ -88,27 +75,23 @@ class PromptProcessor:
                     # Store PR info in agent state
                     self.agent_states[agent_id]['pr_info'] = pr_data
                     self.agent_states[agent_id]['status'] = 'creating_pr'
-                logger.debug(f"Action: {action}")
                 return action
                 
             elif action.startswith('/instruct '):
                 # Return just the instruction without the command
-                logger.debug(f"Action: {action}")
                 return action[10:].strip()
             else:
-                logger.debug(f"Action: {action}")
                 return action
                 
         except json.JSONDecodeError:
-            logger.error(f"Invalid JSON response: {response}")
+            logging.error(f"Invalid JSON response: {response}")
             return None
         except Exception as e:
-            logger.error(f"Error processing response: {e}")
+            logging.error(f"Error processing response: {e}")
             return None
             
     def get_agent_state(self, agent_id: str) -> Dict:
         """Get the current state for an agent"""
-        logger.info(f"Getting state for agent: {agent_id}")
         return self.agent_states.get(agent_id, {
             'progress': 'Not started',
             'thought': 'Initializing...',
@@ -118,5 +101,4 @@ class PromptProcessor:
         
     def get_response_history(self, agent_id: str) -> List[AgentResponse]:
         """Get the response history for an agent"""
-        logger.info(f"Getting response history for agent: {agent_id}")
         return self.response_history.get(agent_id, [])
